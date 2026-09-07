@@ -2,7 +2,6 @@ import { useState } from "react";
 import { StreamEvent, ToolCall } from "../hooks/useDataStream";
 import {
   Brain,
-  Settings,
   CheckCircle,
   ChevronDown,
   ChevronRight,
@@ -10,6 +9,9 @@ import {
   Play,
   Zap,
 } from "lucide-react";
+import { getToolIcon } from "../lib/toolIcons";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface StreamEventRendererProps {
   events: StreamEvent[];
@@ -98,36 +100,35 @@ export function StreamEventRenderer({ events, isLoading }: StreamEventRendererPr
                   <span className="text-sm font-medium text-purple-100">AI Thinking</span>
                   {isLoading && <Loader2 className="w-3 h-3 text-purple-400 animate-spin" />}
                 </div>
-                <p className="text-sm text-purple-200/80 italic">
-                  <div dangerouslySetInnerHTML={{
-                    __html: typeof event.content === "string"
+                <div className="text-sm text-purple-200/80 italic">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {typeof event.content === "string"
                       ? event.content
-                      : JSON.stringify(event.content)
-                  }} />
-                </p>
+                      : JSON.stringify(event.content)}
+                  </ReactMarkdown>
+                </div>
               </div>
             </div>
           </div>
         );
 
-      case 'tool_call':
-        const isExpanded = expandedItems.has(event.id);
+      case 'tool_call': {
+        if (!event.tool_calls || event.tool_calls.length === 0) return null;
         return (
-          event.tool_calls?.map((toolCall: ToolCall) => (
-            <div key={event.id} className="bg-blue-900/20 border border-blue-700/30 rounded-lg overflow-hidden">
+          event.tool_calls.map((toolCall: ToolCall, index: number) => {
+            const toolCallId = `${event.id}-${index}`;
+            const isExpanded = expandedItems.has(toolCallId);
+            const ToolIcon = getToolIcon(toolCall.name);
+            return (
+            <div key={toolCallId} className="bg-blue-900/20 border border-blue-700/30 rounded-lg overflow-hidden">
             <button
-              onClick={() => toggleExpand(event.id)}
+              onClick={() => toggleExpand(toolCallId)}
               className="w-full flex items-center justify-between p-4 hover:bg-blue-800/20 transition-colors"
             >
               <div className="flex items-center gap-3">
-                <Settings className="w-5 h-5 text-blue-400" />
-                <div className="text-left">
-                  <div className="text-sm font-medium text-blue-100">
-                    {toolCall.name}
-                  </div>
-                  <div className="text-xs text-blue-200/60">
-                    Tool execution
-                  </div>
+                <ToolIcon className="w-5 h-5 text-blue-400" />
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-blue-100">{toolCall.name}</span>
                 </div>
               </div>
               {isExpanded ? (
@@ -140,16 +141,18 @@ export function StreamEventRenderer({ events, isLoading }: StreamEventRendererPr
             {isExpanded && (
               <div className="px-4 pb-4 border-t border-blue-700/20">
                 <div className="text-xs text-blue-200/60 mb-2">Arguments:</div>
-                <pre className="text-xs text-blue-100 bg-blue-950/30 p-2 rounded overflow-auto">
+                <pre className="text-xs text-blue-100 bg-blue-950/30 p-2 rounded overflow-y-auto max-h-60 whitespace-pre-wrap break-words">
                   {JSON.stringify(toolCall.args, null, 2)}
                 </pre>
               </div>
             )}
           </div>
-          ))
+          );
+          })
         );
+      }
 
-      case 'tool_result':
+      case 'tool_result': {
         const resultExpanded = expandedItems.has(event.id);
         return (
           <div key={event.id} className="bg-green-900/20 border border-green-700/30 rounded-lg overflow-hidden ml-6">
@@ -178,13 +181,14 @@ export function StreamEventRenderer({ events, isLoading }: StreamEventRendererPr
             {resultExpanded && (
               <div className="px-3 pb-3 border-t border-green-700/20">
                 <div className="text-xs text-green-200/60 mb-2">Result:</div>
-                <pre className="text-xs text-green-100 bg-green-950/30 p-2 rounded overflow-auto max-h-40">
+                <pre className="text-xs text-green-100 bg-green-950/30 p-2 rounded overflow-y-auto max-h-60 whitespace-pre-wrap break-words">
                   {typeof event.content === 'string' ? event.content : JSON.stringify(event.content, null, 2)}
                 </pre>
               </div>
             )}
           </div>
         );
+      }
 
       case 'token_group':
         return (
@@ -196,11 +200,11 @@ export function StreamEventRenderer({ events, isLoading }: StreamEventRendererPr
                   AI Response
                 </div>
                 <div className="text-sm text-neutral-200 prose prose-sm prose-invert max-w-none">
-                <div dangerouslySetInnerHTML={{
-                    __html: typeof event.content === "string"
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {typeof event.content === "string"
                       ? event.content
-                      : JSON.stringify(event.content)
-                  }} />
+                      : JSON.stringify(event.content)}
+                  </ReactMarkdown>
                   {isLoading && <span className="animate-pulse">|</span>}
                 </div>
               </div>
@@ -267,9 +271,13 @@ export function StreamEventRenderer({ events, isLoading }: StreamEventRendererPr
 
   if (events.length === 0 && !isLoading) return null;
 
+  const renderedEvents = processedEvents.map(renderEvent).filter(Boolean);
+
+  if (renderedEvents.length === 0 && !isLoading) return null;
+
   return (
     <div className="space-y-2 mb-4">
-      {processedEvents.map(renderEvent)}
+      {renderedEvents}
 
       {isLoading && (
         <div className="flex items-center gap-2 text-xs text-neutral-500 justify-center py-2">
